@@ -2,6 +2,7 @@ import socket
 import threading
 import sys
 import os
+import time
 from argon2 import low_level
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.exceptions import InvalidTag
@@ -50,7 +51,11 @@ def receive(sock, signal):
             break
 
 # Get host and port
-host = input("Host: ")
+host_input = input("Host (leave blank for 127.0.0.1): ").strip()
+host = host_input if host_input else '127.0.0.1'
+if host.lower() == 'localhost':
+    host = '127.0.0.1'
+
 port = int(input("Port: "))
 
 # Attempt connection to server
@@ -60,15 +65,24 @@ try:
     
     key_exists = input("Has a key already been established? (y/n): ").lower() == 'y'
     
+    udp_port = port + 1
+    
     if not key_exists:
         # Get key from user
         user_password = input("Enter the chat secret key to create: ")
         raw_key = derive_key(user_password)
         
-        # Send AES key via UDP to port + 1
-        print(f"TCP Handshake successful. Sending new AES key via UDP to {host}:{port + 1}...")
+        print(f"[DEBUG] TCP Handshake successful. Sending new AES key via UDP to {host}:{udp_port}...")
+        
+        # Small delay to ensure server UDP thread is bound and listening
+        time.sleep(0.2)
+        
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_sock:
-            udp_sock.sendto(raw_key, (host, port + 1))
+            # Send twice to increase visibility in Wireshark
+            udp_sock.sendto(raw_key, (host, udp_port))
+            sent_bytes = udp_sock.sendto(raw_key, (host, udp_port))
+            print(f"[DEBUG] Sent {sent_bytes} bytes via UDP to {host}:{udp_port}.")
+            print(raw_key.hex())
     else:
         print("Requesting key from server...")
         sock.sendall(b"GET_KEY")
@@ -77,11 +91,16 @@ try:
             print("Server has no key established yet. You must create one.")
             user_password = input("Enter the chat secret key to create: ")
             raw_key = derive_key(user_password)
-            print(f"Sending new AES key via UDP to {host}:{port + 1}...")
+            
+            print(f"[DEBUG] Sending new AES key via UDP to {host}:{udp_port}...")
+            
+            time.sleep(0.2)
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_sock:
-                udp_sock.sendto(raw_key, (host, port + 1))
+                udp_sock.sendto(raw_key, (host, udp_port))
+                sent_bytes = udp_sock.sendto(raw_key, (host, udp_port))
+                print(f"[DEBUG] Sent {sent_bytes} bytes via UDP.")
         else:
-            print("Key received from server.")
+            print(f"Key received from server ({len(raw_key)} bytes).")
             
     aesgcm = AESGCM(raw_key)
         

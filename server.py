@@ -87,25 +87,33 @@ def udp_key_listener(host, port):
     udp_port = port + 1
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as udp_sock:
         try:
-            udp_sock.bind((host, udp_port))
-            print(f"UDP Key Listener started on {host}:{udp_port}")
+            # If host is empty, bind to all interfaces
+            bind_addr = host if host else '0.0.0.0'
+            udp_sock.bind((bind_addr, udp_port))
+            print(f"[DEBUG] UDP Key Listener successfully bound to {bind_addr}:{udp_port}")
             while True:
+                print(f"[DEBUG] UDP Key Listener waiting for data on port {udp_port}...")
                 data, addr = udp_sock.recvfrom(32) # AES-256 key is 32 bytes
                 if data:
                     shared_key = data
-                    print(f"AES key received via UDP from {addr}. Key is now stored for clients.")
+                    print(f"[SUCCESS] AES key received via UDP from {addr}. Key stored.")
         except Exception as e:
-            print(f"UDP Key Listener error: {e}")
+            print(f"[ERROR] UDP Key Listener error: {e}")
 
 def main():
     # Get host and port
-    host = input("Host: ")
+    host_input = input("Host (leave blank for 127.0.0.1): ").strip()
+    host = host_input if host_input else '127.0.0.1'
+    if host.lower() == 'localhost':
+        host = '127.0.0.1'
+        
     port = int(input("Port: "))
 
     # Create new server socket
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.bind((host, port))
     sock.listen(5)
+    print(f"[DEBUG] TCP Server listening on {host}:{port}")
 
     # Create new thread to wait for connections
     newConnectionsThread = threading.Thread(target = newConnections, args = (sock,))
